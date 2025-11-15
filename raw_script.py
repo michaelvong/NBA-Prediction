@@ -46,7 +46,7 @@ def get_game_list(season, season_type):
 
 def fetch_boxscore_data(game_id):
     """Fetch data from all box score endpoints for a single game."""
-    time.sleep(3.5)  # Rate limiting
+    time.sleep(2)  # Rate limiting
 
     data = {}
 
@@ -382,8 +382,8 @@ def main(season, season_type='Regular Season', progress_id_file='progress_ids.js
 if __name__ == "__main__":
     # Example usage
     df = main(
-        season='2023-24',
+        season='2024-25',
         season_type='Regular Season',
         progress_id_file='progress_ids.json',
-        output_file='nba_team_stats_2023_24.csv'
+        output_file='nba_team_stats_2024_25.csv'
     )
