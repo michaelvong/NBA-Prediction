@@ -2,148 +2,149 @@ CS271 ML project to predict outcome of nba game </br>
 to generate data use run raw_script.py, edit season and output_file in main function
 
 
-This will create an output directory named **`nba_fe_outputs`** containing all engineered features.
+# Game-Level Feature Engineering Overview
 
-All season CSV files (e.g., `nba_team_stats_2021_22.csv`, `nba_team_stats_2022_23.csv`, etc.) are referenced directly inside **`build_nba_features.py`**.  
-Update the file paths there if your data is stored elsewhere. Any data cleaning, column selection, or merging logic is also fully defined within that script.
+The goal of this pipeline is to transform raw *per-team per-game* NBA data into a fully leak-free feature set that supports:
 
----
+- **Game-level win prediction models** (XGBoost, Logistic Regression)
+- **Opponent-aware modeling** (pre-game matchup strength)
+- **Sequence models** (RNNs / LSTMs reading team trajectories game-by-game)
 
-## Feature Engineering Overview
+This new version is fully redesigned for **per-game** prediction, ensuring:
 
-The goal of this pipeline is to transform raw *per-team per-game* NBA statistics into a rich, multi-season feature set that supports:
-
-- **Regression models** (predict exact final win%)
-- **Classification models** (predict performance tiers)
-- **Sequence models** (RNNs that read game-by-game trajectories)
-
-To achieve this, the script performs:
-
----
-
-### 1. Combine All Seasons
-
-All CSVs are loaded and concatenated. Rows are sorted by `season`, `team_id`, and `game_date`.  
-This creates one unified dataset covering multiple years.
+- **No label leakage** (features use only games *before* the current game)
+- **Time-aware features** (chronological sorting, game index)
+- **Opponent pre-game strength** (their own season-to-date form)
+- **Short-term form and volatility** (rolling windows)
+- **Rest/fatigue modeling** (days since last game)
 
 ---
 
-### 2. Compute Game-Level Differential Features
+### 1. Input CSV Structure (Raw Stats)
 
-For every game, the script creates **team minus opponent** features such as:
+Each seasonal input file (e.g., `nba_team_stats_2020_21.csv`) contains **one row per team per game** with:
 
-- Net points and net rating  
-- Offensive/defensive rating gaps  
-- eFG%, TS%, FTr, TOV% differentials  
-- Pace and possession differences  
+- Identifiers: `season`, `game_id`, `game_date`, `team_id`, `team_name`, `opponent_team_id`, `home`, `win`
+- Team advanced stats: offensive/defensive/net rating, eFG%, TS%, TOV%, ORB%, FTr, pace  
+- Opponent advanced stats: same fields prefixed with `opp_`
 
-Differential stats capture *relative strength* and are highly predictive.
-
----
-
-### 3. Rolling Performance Windows
-
-The pipeline generates rolling features for each team:
-
-- Last **5-game** and **10-game** averages  
-- Rolling shooting efficiency  
-- Rolling turnover and rebound trends  
-- Rolling net rating and pace trends  
-
-Rolling windows smooth randomness and capture momentum.
+These are **current-game stats** collected after the game, so they **cannot** be used directly as features.
 
 ---
 
-### 4. Season-to-Date Summaries
+### 2. Chronological Ordering & Game Index
 
-For each game index, the script computes cumulative statistics:
+All games are sorted by: season → team_id → game_date
 
-- Season average offensive/defensive efficiency  
-- Season net rating  
-- Season shooting and turnover tendencies  
-- Aggregate possession and pace metrics  
 
-These represent long-term team strength.
+A per-team `game_index` is assigned:
 
----
+- `1` = first game of season  
+- Increases sequentially for each team  
 
-### 5. Strength of Schedule (SOS)
-
-Using opponents’ stats, the script computes:
-
-- Opponent win% difficulty  
-- Rolling opponent quality  
-- SOS-adjusted efficiency metrics  
-
-This compensates for uneven schedules across teams.
+This gives models awareness of **season progression**, letting them learn differences between early-season and late-season performance.
 
 ---
 
-### 6. Home/Away Splits
+### 3. Convert Raw Stats to Game-Level Differentials
 
-Teams often perform differently at home vs. away.  
-We compute:
+The script computes internal **team minus opponent** metrics:
 
-- Home-only averages  
-- Away-only averages  
-- Home–away differentials  
+- `eFG_diff`, `TS_diff`, `TOV_diff`, `ORB_diff`, `FTr_diff`
+- `net_rating_diff`
 
----
-
-### 7. Create Model-Ready Feature Tables
-
-#### **A) Static Snapshot Dataset — One Row per Team-Season**
-Pulled at a fixed checkpoint (e.g., after 20 games).  
-Used for regression or simple classification.
-
-Outputs:
-- `static_features_raw.csv`
-- `X_static.npy`
-- `y_static.npy`
-
-#### **B) Windowed Dataset — Multiple Samples per Season**
-A new sample every *N* games (e.g., every 5).  
-Useful for probability models and midseason forecasting.
-
-Outputs:
-- `static_features_windows_raw.csv`
-- `X_static_windows.npy`
-- `y_static_windows.npy`
-
-#### **C) Sequence Dataset — Full Game-by-Game Timeline**
-Used for RNNs.  
-Each sequence contains all game-level features in chronological order.
-
-Outputs:
-- `X_seq_norm.npy`
-- `y_seq.npy`
-- `sequence_index_mapping.csv`
+These reflect performance gaps but are used **only** inside rolling/expanding windows.  
+They are **never fed directly** into the model (to avoid leakage).
 
 ---
 
-### 8. Standardization & Feature Selection
+### 4. Season-to-Date Features (Shifted = Leak-Free)
 
-All feature arrays are standardized (z-score).  
-Feature column lists are exported for reproducibility:
+For each team and season, the script computes expanding means of:
 
-- `static_feature_columns.txt`
-- `static_window_feature_columns.txt`
-- `sequence_feature_columns.txt`
+- `team_offensiveRating`, `team_defensiveRating`, `team_netRating`
+- `eFG_diff`, `TOV_diff`, `ORB_diff`, `FTr_diff`
+- `team_pace`
+- `win` → becomes `win_pct_todate`
+
+All are **shifted by 1 game**:
+
+> For game *t*, features summarize games **1..(t–1)** only.
+
+This produces long-term form features that are **100% pre-game**.
 
 ---
 
-## Summary
+### 5. Rolling Windows (Short-Term Form & Volatility)
 
-Running `build_nba_features.py` automatically transforms raw NBA game data into:
+Using 5-game and 10-game windows, the script computes leak-free rolling:
 
-- **Static per-season features**
-- **Rolling window features**
-- **Sequential game-by-game features**
+- Means: `team_netRating_last5`, `win_last10`, `eFG_diff_last10`
+- Standard deviations: performance volatility, e.g.  
+  `team_netRating_std_last10`, `eFG_diff_std_last5`
 
-These support:
+All rolling calculations are **shifted** so they contain only prior games.
 
-- Logistic Regression  
-- XGBoost / Random Forest  
-- RNNs for season trajectory modeling  
+These features capture:
 
-All preprocessing, windowing, SOS, and differential feature logic is handled inside the script.
+- Momentum  
+- Slumps  
+- Consistency vs volatility  
+
+---
+
+### 6. Rest / Fatigue Metrics
+
+For each team:
+
+days_since_last_game = difference in days from previous game
+
+
+This encodes:
+
+- Back-to-backs  
+- Long rest periods  
+- Fatigue effects  
+
+---
+
+### 7. Opponent Pre-Game Strength
+
+For every game, the opponent’s **own** season-to-date features are merged in:
+
+- `opp_netRating_avg_todate`
+- `opp_win_pct_todate`
+
+Then matchup feature gaps are computed:
+
+- `matchup_net_rating_gap`
+- `matchup_win_pct_gap`
+
+This lets the model compare teams based on **pre-game strength**, not final-season stats.
+
+---
+
+### 8. Output Datasets
+
+After running the script:
+
+- **`game_features_raw.csv`** — full leak-free dataset  
+- **`X_game.npy`** — standardized numerical features  
+- **`y_game.npy`** — per-team game outcome (0/1)  
+- **`game_feature_columns.txt`** — names of input features for modeling  
+
+These outputs are directly compatible with:
+- Logistic Regression
+- XGBoost / Random Forest
+- Neural networks
+- RNN/LSTM team-sequence modeling
+
+---
+
+### Summary
+
+This pipeline converts raw NBA per-game stats into a **robust, leak-free dataset** suitable for game-level prediction.  
+It includes temporal structure, opponent context, short-term form, long-term form, rest effects, and matchup strength — all computed using **only information available before each game**.
+
+
+
