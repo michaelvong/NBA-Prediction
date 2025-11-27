@@ -339,7 +339,7 @@ def main():
 
     # ---- Save raw game-level CSV ----
     game_df.to_csv(
-        os.path.join(OUTPUT_DIR, "game_features_raw2.csv"),
+        os.path.join(OUTPUT_DIR, "game_features_raw.csv"),
         index=False,
     )
 
