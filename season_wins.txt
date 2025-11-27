@@ -1,0 +1,35 @@
+Total rows for season 2024-25: 2384
+Rows represent teams (2 rows per game).
+Inferred number of games: 1192
+
+=== WIN-LOSS RECORD PER TEAM ===
+Thunder: 65-14
+Cavaliers: 61-18
+Celtics: 59-21
+Rockets: 51-27
+Knicks: 50-30
+Nuggets: 50-30
+Clippers: 49-31
+Pacers: 48-30
+Timberwolves: 48-32
+Grizzlies: 47-33
+Lakers: 47-32
+Bucks: 46-33
+Warriors: 46-34
+Pistons: 44-36
+Kings: 40-40
+Magic: 39-41
+Mavericks: 38-42
+Hawks: 38-41
+Bulls: 38-41
+Trail Blazers: 36-44
+Heat: 35-44
+Suns: 34-45
+Spurs: 32-46
+Raptors: 29-51
+Nets: 26-54
+76ers: 24-56
+Pelicans: 19-61
+Hornets: 18-61
+Wizards: 18-61
+Jazz: 17-63
